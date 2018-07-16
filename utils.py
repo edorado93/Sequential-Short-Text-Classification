@@ -181,9 +181,9 @@ class SentenceAnnotatorDataset(Dataset):
         abstracts, num_of_sentences = self.abstracts[index]
         sentence_labels = self.labels[index]
 
-        abstracts = torch.tensor(abstracts)
-        sentence_labels = torch.tensor(sentence_labels)
-        num_of_sentences = torch.tensor(num_of_sentences).view(-1, 1)
+        abstracts = torch.LongTensor(abstracts)
+        sentence_labels = torch.FloatTensor(sentence_labels)
+        num_of_sentences = torch.LongTensor(num_of_sentences).view(-1, 1)
 
         if self.cuda:
             abstracts = abstracts.cuda()

@@ -56,10 +56,6 @@ def train_epoches(dataset, model, n_epochs):
         model.train(True)
         examples_processed = 0
         for i, (abstracts, sentence_labels, num_of_sentences) in enumerate(train_loader):
-
-                print(abstracts.shape, sentence_labels.shape, num_of_sentences.shape)
-                exit(0)
-
                 output = model(abstracts)
                 loss = criterion(output, sentence_labels)
 

@@ -4,15 +4,16 @@ import torch
 class Predictor(nn.Module):
     def __init__(self, emsize, num_of_classes, d1, d2, use_cuda=False):
         super(Predictor, self).__init__()
-        self.softmax = nn.Softmax()
+        self.softmax = nn.Softmax(dim=1)
+        self.tanh = nn.Tanh()
         self.emsize = emsize
         self.num_of_classes = num_of_classes
         self.use_cuda = use_cuda
         self.weights_FF_1 = []
-        self.bias_FF_1 = torch.zeros(num_of_classes, 1)
+        self.bias_FF_1 = torch.zeros(1, num_of_classes)
 
         self.weights_FF_2 = []
-        self.bias_FF_2 = torch.zeros(num_of_classes, 1)
+        self.bias_FF_2 = torch.zeros(1, num_of_classes)
 
         # From the paper,
         # d1 and d2 are the history sizes used in the first and second layers
@@ -59,25 +60,27 @@ class Predictor(nn.Module):
 
             class_representations = []
             # The j loop according to the paper for FF1
-            for j in range(i - self.d2, i + 1):
-                # The inner loop for FF1
-                summation = 0
-                for k in range(self.d1 + 1):
-                    linear = torch.mm(structural_representations[j - k], self.weights_FF_1[k]) + self.bias_FF_1
-                    # We have to sum all these terms
-                    summation += linear
+            if i >= self.d2:
+                for j in range(i - self.d2, i + 1):
+                    # The inner loop for FF1
+                    summation = 0
+                    for k in range(self.d1 + 1):
+                        if j >= k:
+                            linear = torch.mm(structural_representations[j - k], self.weights_FF_1[k]) + self.bias_FF_1
+                            # We have to sum all these terms
+                            summation += linear
 
-                # tanh of the summed values is our class representation
-                class_representations.append(nn.tanh(summation))
+                    # tanh of the summed values is our class representation
+                    class_representations.append(self.tanh(summation))
 
             # We didn't get enough terms for summation, then we simply use our current sentence as is
             if not class_representations:
                 linear = torch.mm(structural_representations[i], self.weights_FF_1[0]) + self.bias_FF_1
-                class_representations.append(nn.tanh(linear))
+                class_representations.append(self.tanh(linear))
 
             # Use the class activations now, feed to the second layer of NN and fetch the required sum.
             summation = 0
-            for j in range(self.d2 + 1):
+            for j in range(len(class_representations)):
                 linear = torch.mm(class_representations[j], self.weights_FF_2[j]) + self.bias_FF_2
                 summation += linear
 
@@ -90,6 +93,8 @@ class Predictor(nn.Module):
         if self.use_cuda:
             predictions = predictions.cuda()
 
+        # The predictions over classes are integer based. We need float values for Cross Entropy Loss.
+        predictions = predictions.type(torch.FloatTensor)
         return predictions
 
 class Pooling(nn.Module):
@@ -101,12 +106,9 @@ class Pooling(nn.Module):
         # Stack them up to get one single tensor of dimension
         # N * B * H
         # B = Batch size
-        # N = Number of hidden states i.e. the time steps
+        # N = Number of hidden states i.e. the time steps i.e. number of words per abstract
         # H = Hidden dimension of the LSTM
         combine_states = torch.stack(hidden_states)
-
-        # We want B * N * H. Makes more sense
-        combine_states = combine_states.t()
 
         # Apply max pooling to the hidden states. Element wise max.
         if self.type == "max":
@@ -121,6 +123,7 @@ class Pooling(nn.Module):
 class Annotator(nn.Module):
     def __init__(self, vocab_size, emsize, number_of_structural_labels, config, use_cuda=False):
         super(Annotator, self).__init__()
+        self.use_cuda = use_cuda
         self.emsize = emsize
         self.embedding = nn.Embedding(vocab_size, emsize)
         self.rnn_cell = nn.LSTMCell(emsize, emsize)
@@ -148,6 +151,9 @@ class Annotator(nn.Module):
 
         # Initial hidden and cell states of the LSTMCell
         h, c = torch.zeros(batch_size, self.emsize), torch.zeros(batch_size, self.emsize)
+        if self.use_cuda:
+            h = h.cuda()
+            c = c.cuda()
 
         # List to keep track of the hidden states
         hidden_states = []
@@ -170,7 +176,7 @@ class Annotator(nn.Module):
                 # The hidden states at every time-step
                 sent_hidden_states.append(h)
 
-            hidden_states.append(sent_hidden_states)
+            hidden_states.append(torch.stack(sent_hidden_states))
 
         # Once we are done processing the individual words, one at a time for the
         # j^th sentence of each abstract of the batch, we need to apply max-pooling
@@ -180,5 +186,11 @@ class Annotator(nn.Module):
         # Use the second part of the network to make predictions for each sentence of each abstract
         predictions = self.predictor(sentence_representations)
 
+        # The predictions we get are of the dimension N * B * 1
+        # N = number of sentences
+        # B = Batch size
+        # 1 is for the prediction made by the model per sentence per batch.
+        # We need B * N * 1
+        predictions = predictions.t()
         return predictions
 
