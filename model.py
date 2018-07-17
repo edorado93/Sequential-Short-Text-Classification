@@ -4,7 +4,7 @@ import torch
 class Predictor(nn.Module):
     def __init__(self, emsize, num_of_classes, d1, d2, use_cuda=False):
         super(Predictor, self).__init__()
-        self.softmax = nn.Softmax(dim=1)
+        self.softmax = nn.LogSoftmax(dim=1)
         self.tanh = nn.Tanh()
         self.emsize = emsize
         self.num_of_classes = num_of_classes
@@ -85,7 +85,7 @@ class Predictor(nn.Module):
                 summation += linear
 
             # Predicitions' probability distributions using softmax
-            sent_pred = self.softmax(summation).topk(1)[1]
+            sent_pred = self.softmax(summation)
             predictions.append(sent_pred)
 
         # Stack the predictions into a single tensor and cuda() if applicable
@@ -93,8 +93,6 @@ class Predictor(nn.Module):
         if self.use_cuda:
             predictions = predictions.cuda()
 
-        # The predictions over classes are integer based. We need float values for Cross Entropy Loss.
-        predictions = predictions.type(torch.FloatTensor)
         return predictions
 
 class Pooling(nn.Module):
@@ -186,11 +184,10 @@ class Annotator(nn.Module):
         # Use the second part of the network to make predictions for each sentence of each abstract
         predictions = self.predictor(sentence_representations)
 
-        # The predictions we get are of the dimension N * B * 1
+        # The predictions we get are of the dimension N * B * C
         # N = number of sentences
         # B = Batch size
-        # 1 is for the prediction made by the model per sentence per batch.
-        # We need B * N * 1
-        predictions = predictions.t()
+        # C are the number of output classes
+        # We need B * C * N
+        predictions = predictions.t().transpose(1,2)
         return predictions
-

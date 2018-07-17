@@ -47,15 +47,15 @@ class Vectorizer:
         self._build_word_index()
 
     def _build_word_index(self):
-        self.word2idx['<UNK>'] = 3
-        self.word2idx['<PAD>'] = 0
-        self.word2idx['introduction'] = 4
-        self.word2idx['body'] = 5
-        self.word2idx['conclusion'] = 6
+        self.word2idx['<UNK>'] = 4
+        self.word2idx['<PAD>'] = 3
+        self.word2idx['introduction'] = 0
+        self.word2idx['body'] = 1
+        self.word2idx['conclusion'] = 2
 
         if self.start_end_tokens:
-            self.word2idx['<EOS>'] = 1
-            self.word2idx['<SOS>'] = 2
+            self.word2idx['<EOS>'] = 5
+            self.word2idx['<SOS>'] = 6
 
         offset = len(self.word2idx)
         for idx, word in enumerate(self.vocabulary):
@@ -132,7 +132,7 @@ class SentenceAnnotatorDataset(Dataset):
                 sent_labels.append(L)
             return abstracts, sent_labels
 
-    def _pad_sentence_vector(self, vector, maxlen, pad_value=0):
+    def _pad_sentence_vector(self, vector, maxlen, pad_value=3):
         org_length = len(vector)
         padding = maxlen - org_length
         vector.extend([pad_value] * padding)
@@ -181,9 +181,9 @@ class SentenceAnnotatorDataset(Dataset):
         abstracts, num_of_sentences = self.abstracts[index]
         sentence_labels = self.labels[index]
 
-        abstracts = torch.LongTensor(abstracts)
-        sentence_labels = torch.FloatTensor(sentence_labels)
-        num_of_sentences = torch.LongTensor(num_of_sentences).view(-1, 1)
+        abstracts = torch.tensor(abstracts)
+        sentence_labels = torch.tensor(sentence_labels)
+        num_of_sentences = torch.tensor(num_of_sentences).view(-1, 1)
 
         if self.cuda:
             abstracts = abstracts.cuda()
