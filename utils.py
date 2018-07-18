@@ -57,9 +57,9 @@ class Vectorizer:
             self.word2idx['<EOS>'] = 5
             self.word2idx['<SOS>'] = 6
 
-        offset = len(self.word2idx)
         for idx, word in enumerate(self.vocabulary):
-            self.word2idx[word] = idx + offset
+            if word not in self.word2idx:
+                self.word2idx[word] = len(self.word2idx)
         self.idx2word = {idx: word for word, idx in self.word2idx.items()}
 
     def add_start_end(self, vector):
@@ -70,7 +70,7 @@ class Vectorizer:
         """
         Vectorize a single sentence
         """
-        vector = [self.word2idx.get(word, 3) for word in sentence]
+        vector = [self.word2idx.get(word, 4) for word in sentence]
         if start_end_tokens:
             vector = self.add_start_end(vector)
         return vector
@@ -125,7 +125,7 @@ class SentenceAnnotatorDataset(Dataset):
                 sentences = j["sents"]
                 labels = j["labels"]
                 S, L = [self._tokenize_word(s) for s in sentences], [[l] for l in labels]
-                if len(S) > self.max_sent:
+                if len(S) > self.max_sent or max([len(s) for s in S]) > self.max_len:
                     continue
                 self.max_number_of_sentences = max(self.max_number_of_sentences, len(S))
                 abstracts.append(S)

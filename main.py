@@ -6,19 +6,23 @@ from model import Annotator
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from tensorboardX import SummaryWriter
+import json
 
 
 class Config:
-    relative_train_path = '/data/small_train.dat'
-    relative_dev_path = '/data/small_valid.dat'
+    relative_train_path = '/data/train.dat'
+    relative_dev_path = '/data/valid.dat'
+    relative_test_path = '/data/valid.dat'
     min_freq = 1
     emsize = 512
-    batch_size = 2
+    batch_size = 8
     lr = 0.0001
-    log_interval = 5
+    log_interval = 200
     max_grad_norm = 10
     d1 = 0
     d2 = 0
+    epochs = 20
+    patience = 5
 
 
 parser = argparse.ArgumentParser(description='seq2seq model')
@@ -26,6 +30,10 @@ parser.add_argument('--cuda', action='store_true',
                     help='use CUDA')
 parser.add_argument('--conf', type=str,
                     help="configuration to load for the training")
+parser.add_argument('--mode', type=int,
+                    help='train = 0, eval = 1', default=0)
+parser.add_argument('--save', type=str,
+                    help="Model file to save parameters to", default="model.pkl")
 
 config = Config()
 args = parser.parse_args()
@@ -45,10 +53,12 @@ training_data_path = cwd + config.relative_train_path
 validation_data_path = cwd + config.relative_dev_path
 
 vectorizer = Vectorizer(min_frequency=config.min_freq)
-annotator_train_dataset = SentenceAnnotatorDataset(training_data_path, vectorizer, args.cuda, max_len=1000)
-annotator_valid_dataset = SentenceAnnotatorDataset(validation_data_path, vectorizer, args.cuda, max_len=1000)
+annotator_train_dataset = SentenceAnnotatorDataset(training_data_path, vectorizer, args.cuda, max_len=100)
+annotator_valid_dataset = SentenceAnnotatorDataset(validation_data_path, vectorizer, args.cuda, max_len=100)
 
 model = Annotator(len(vectorizer.word2idx), config.emsize, 4, config, args.cuda)
+total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in model.parameters())
+print('Model total parameters:', total_params, flush=True)
 
 criterion = nn.NLLLoss()
 if args.cuda:
@@ -63,21 +73,24 @@ def evaluate(dataset, model):
     loss = 0
     correct_predictions = 0
     tot_sentences = 0
-    num_examples = 0
     for i, (abstracts, sentence_labels, num_of_sentences) in enumerate(valid_loader):
         output = model(abstracts)
         sentence_labels = sentence_labels.squeeze(2)
         correct_predictions += torch.sum(output.topk(1, dim=1)[1].squeeze(1) == sentence_labels).data
-        loss += (criterion(output, sentence_labels) * abstracts.shape[0])
-        num_examples += abstracts.shape[0]
-        tot_sentences += (abstracts.shape[1] * abstracts.shape[0])
+        sentences_processed = abstracts.shape[1] * abstracts.shape[0]
+        loss += criterion(output, sentence_labels).item() * sentences_processed
+        tot_sentences += sentences_processed
 
-    return loss / num_examples, (correct_predictions * 100.) / tot_sentences
+    return loss / tot_sentences, (correct_predictions * 100.) / tot_sentences
 
 
 def train_epoches(dataset, model, n_epochs):
     train_loader = DataLoader(dataset, config.batch_size)
+    best_loss = 100.
+    patience = config.patience
     for epoch in range(1, n_epochs + 1):
+        interval_loss = 0
+        interval_sentences = 0
         per_epoch_loss = 0
         correct_predictions = 0
         tot_sentences = 0
@@ -94,21 +107,60 @@ def train_epoches(dataset, model, n_epochs):
             torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
             optimizer.step()
 
+            sentences_processed = abstracts.shape[1] * abstracts.shape[0]
             examples_processed += abstracts.shape[0]
-            tot_sentences += (abstracts.shape[1] * abstracts.shape[0])
-            per_epoch_loss += (loss * abstracts.shape[0])
+            tot_sentences += sentences_processed
+            interval_sentences += sentences_processed
+            per_epoch_loss += loss.item() * sentences_processed
+            interval_loss += loss.item() * sentences_processed
 
             if examples_processed % config.log_interval == 0:
-                print("Epoch {}, examples processed {}, loss {}".format(epoch, examples_processed, loss))
+                print("Epoch {}, examples processed {}, loss {}".format(epoch, examples_processed, interval_loss / interval_sentences))
+                interval_loss = 0
+                interval_sentences = 0
 
-        print(examples_processed)
         valid_loss, valid_accuracy = evaluate(annotator_valid_dataset, model)
-        training_loss = per_epoch_loss / examples_processed
+        training_loss = per_epoch_loss / tot_sentences
         training_accuracy = (correct_predictions * 100.) / tot_sentences
         writer.add_scalar("loss/training_loss", training_loss, epoch)
         writer.add_scalar("loss/valid_loss", valid_loss, epoch)
         print("Epoch {} complete \n --> Training Loss = {} \n --> Validation Loss = {} \
               \n --> Training Accuracy = {}% \n --> Validation Accuracy = {}% \n".format(epoch, training_loss, valid_loss, training_accuracy, valid_accuracy))
 
+        if valid_loss < best_loss:
+            best_loss = valid_loss
+            print("Saving best model till now")
+            torch.save(model.state_dict(), args.save)
+            patience = config.patience
+        else:
+            patience -= 1
+            if patience == 0:
+                break
 
-train_epoches(annotator_train_dataset, model, 20)
+
+if __name__ == "__main__":
+    if args.mode == 0:
+        train_epoches(annotator_train_dataset, model, config.epochs)
+    if args.mode == 1:
+        model.load_state_dict(torch.load(args.save))
+        test_data_path = cwd + config.relative_test_path
+        test_dataset = SentenceAnnotatorDataset(training_data_path, vectorizer, args.cuda, max_len=1000)
+        test_loader = DataLoader(test_dataset, config.batch_size)
+
+        predictions = []
+        with open("predictions.txt", "w") as f:
+            for i, (abstracts, sentence_labels, num_of_sentences) in enumerate(test_loader):
+                output = model(abstracts)
+                pred = output.topk(1, dim=1)[1].squeeze(1)
+
+                for a, p in zip(abstracts, pred):
+                    sents, labels = [], []
+                    for s1, s2 in zip(a, p):
+                        # Don't consider padded sentences in the end. The extra ones
+                        if s1[0].item() != 3:
+                            sents.append(" ".join([vectorizer.idx2word[w.item()] for w in s1 if w.item() not in [3,5,6]]))
+                            labels.append(vectorizer.idx2word[s2.item()])
+
+                    j = {"sents": sents, "labels": labels}
+                    f.write(json.dumps(j)+"\n")
+
