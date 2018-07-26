@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import utils
 
 class Predictor(nn.Module):
     def __init__(self, emsize, num_of_classes, d1, d2, use_cuda=False):
@@ -119,14 +120,16 @@ class Pooling(nn.Module):
         return sentence_representations
 
 class Annotator(nn.Module):
-    def __init__(self, vocab_size, emsize, number_of_structural_labels, config, use_cuda=False):
+    def __init__(self, embedding, emsize, hidden_size, pooling_dropout, number_of_structural_labels, config, use_cuda=False):
         super(Annotator, self).__init__()
         self.use_cuda = use_cuda
+        self.hidden_size = hidden_size
         self.emsize = emsize
-        self.embedding = nn.Embedding(vocab_size, emsize)
-        self.rnn_cell = nn.LSTMCell(emsize, emsize)
+        self.pooling_dropout = nn.Dropout(p=pooling_dropout)
+        self.embedding = embedding
+        self.rnn_cell = nn.LSTMCell(emsize, self.hidden_size)
         self.pooling = Pooling("max")
-        self.predictor = Predictor(emsize, number_of_structural_labels, config.d1, config.d2, use_cuda)
+        self.predictor = Predictor(self.hidden_size, number_of_structural_labels, config.d1, config.d2, use_cuda)
 
     def forward(self, abstracts):
         embedded = self.embedding(abstracts)
@@ -148,7 +151,7 @@ class Annotator(nn.Module):
         batch_size = embedded.shape[1]
 
         # Initial hidden and cell states of the LSTMCell
-        h, c = torch.zeros(batch_size, self.emsize), torch.zeros(batch_size, self.emsize)
+        h, c = torch.zeros(batch_size, self.hidden_size), torch.zeros(batch_size, self.hidden_size)
         if self.use_cuda:
             h = h.cuda()
             c = c.cuda()
@@ -180,6 +183,9 @@ class Annotator(nn.Module):
         # j^th sentence of each abstract of the batch, we need to apply max-pooling
         # which is element wise max of each hidden states.
         sentence_representations = self.pooling(hidden_states)
+
+        # Apply dropout after the pooling layer
+        sentence_representations = self.pooling_dropout(sentence_representations)
 
         # Use the second part of the network to make predictions for each sentence of each abstract
         predictions = self.predictor(sentence_representations)
