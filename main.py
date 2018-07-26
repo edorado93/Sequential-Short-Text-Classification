@@ -7,22 +7,8 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 from tensorboardX import SummaryWriter
 import json
-
-
-class Config:
-    relative_train_path = '/data/train.dat'
-    relative_dev_path = '/data/valid.dat'
-    relative_test_path = '/data/valid.dat'
-    min_freq = 1
-    emsize = 512
-    batch_size = 8
-    lr = 0.0001
-    log_interval = 200
-    max_grad_norm = 10
-    d1 = 0
-    d2 = 0
-    epochs = 20
-    patience = 5
+import configurations
+import utils
 
 
 parser = argparse.ArgumentParser(description='seq2seq model')
@@ -32,14 +18,11 @@ parser.add_argument('--conf', type=str,
                     help="configuration to load for the training")
 parser.add_argument('--mode', type=int,
                     help='train = 0, eval = 1', default=0)
-parser.add_argument('--save', type=str,
-                    help="Model file to save parameters to", default="model.pkl")
 
-config = Config()
 args = parser.parse_args()
-writer = SummaryWriter(
-    "runs/{}_{}_{}_{}_{}_{}".format(config.d1, config.d2, config.lr, config.emsize, config.batch_size,
-                                    config.relative_train_path))
+config = configurations.get_conf(args.conf)
+save = "d1={}_d2={}_lr={}_emsize={}_dropout={}_pretrained={}.pkl".format(config.d1, config.d2, config.lr, config.emsize, config.pooling_dropout, config.pretrained is not None)
+writer = SummaryWriter("runs/"+save)
 # Set the random seed manually for reproducibility.
 torch.manual_seed(1111)
 if torch.cuda.is_available():
@@ -56,7 +39,10 @@ vectorizer = Vectorizer(min_frequency=config.min_freq)
 annotator_train_dataset = SentenceAnnotatorDataset(training_data_path, vectorizer, args.cuda, max_len=100)
 annotator_valid_dataset = SentenceAnnotatorDataset(validation_data_path, vectorizer, args.cuda, max_len=100)
 
-model = Annotator(len(vectorizer.word2idx), config.emsize, 4, config, args.cuda)
+embedding = nn.Embedding(len(vectorizer.word2idx), config.emsize)
+if config.pretrained:
+    embedding = utils.load_embeddings(embedding, vectorizer.word2idx, config.pretrained, config.emsize)
+model = Annotator(embedding, config.emsize, config.hidden_size, config.pooling_dropout, 4, config, args.cuda)
 total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in model.parameters())
 print('Model total parameters:', total_params, flush=True)
 
@@ -115,7 +101,7 @@ def train_epoches(dataset, model, n_epochs):
             interval_loss += loss.item() * sentences_processed
 
             if examples_processed % config.log_interval == 0:
-                print("Epoch {}, examples processed {}, loss {}".format(epoch, examples_processed, interval_loss / interval_sentences))
+                print("Epoch {}, examples processed {}, loss {:.4f}".format(epoch, examples_processed, interval_loss / interval_sentences))
                 interval_loss = 0
                 interval_sentences = 0
 
@@ -124,13 +110,13 @@ def train_epoches(dataset, model, n_epochs):
         training_accuracy = (correct_predictions * 100.) / tot_sentences
         writer.add_scalar("loss/training_loss", training_loss, epoch)
         writer.add_scalar("loss/valid_loss", valid_loss, epoch)
-        print("Epoch {} complete \n --> Training Loss = {} \n --> Validation Loss = {} \
+        print("Epoch {} complete \n --> Training Loss = {:.4f} \n --> Validation Loss = {:.4f} \
               \n --> Training Accuracy = {}% \n --> Validation Accuracy = {}% \n".format(epoch, training_loss, valid_loss, training_accuracy, valid_accuracy))
 
         if valid_loss < best_loss:
             best_loss = valid_loss
             print("Saving best model till now")
-            torch.save(model.state_dict(), args.save)
+            torch.save(model.state_dict(), save)
             patience = config.patience
         else:
             patience -= 1
@@ -142,7 +128,7 @@ if __name__ == "__main__":
     if args.mode == 0:
         train_epoches(annotator_train_dataset, model, config.epochs)
     if args.mode == 1:
-        model.load_state_dict(torch.load(args.save))
+        model.load_state_dict(torch.load(save))
         test_data_path = cwd + config.relative_test_path
         test_dataset = SentenceAnnotatorDataset(training_data_path, vectorizer, args.cuda, max_len=1000)
         test_loader = DataLoader(test_dataset, config.batch_size)
