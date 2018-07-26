@@ -18,12 +18,10 @@ parser.add_argument('--conf', type=str,
                     help="configuration to load for the training")
 parser.add_argument('--mode', type=int,
                     help='train = 0, eval = 1', default=0)
-parser.add_argument('--conf', type=str,
-                    help="experiment configuration to run")
 
 args = parser.parse_args()
 config = configurations.get_conf(args.conf)
-save = "d1={}_d2={}_lr={}_emsize={}_batch_size={}.pkl".format(config.d1, config.d2, config.lr, config.emsize, config.batch_size)
+save = "d1={}_d2={}_lr={}_emsize={}_dropout={}_pretrained={}.pkl".format(config.d1, config.d2, config.lr, config.emsize, config.pooling_dropout, config.pretrained is not None)
 writer = SummaryWriter("runs/"+save)
 # Set the random seed manually for reproducibility.
 torch.manual_seed(1111)
