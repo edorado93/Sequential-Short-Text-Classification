@@ -21,7 +21,7 @@ parser.add_argument('--mode', type=int,
 
 args = parser.parse_args()
 config = configurations.get_conf(args.conf)
-save = "d1={}_d2={}_lr={}_emsize={}_dropout={}_pretrained={}.pkl".format(config.d1, config.d2, config.lr, config.emsize, config.pooling_dropout, config.pretrained is not None)
+save = "eval={}_hidden={}_d1={}_d2={}_lr={}_emsize={}_dropout={}_pretrained={}.pkl".format(config.eval_using, config.hidden_size, config.d1, config.d2, config.lr, config.emsize, config.pooling_dropout, config.pretrained is not None)
 writer = SummaryWriter("runs/"+save)
 # Set the random seed manually for reproducibility.
 torch.manual_seed(1111)
@@ -73,6 +73,7 @@ def evaluate(dataset, model):
 def train_epoches(dataset, model, n_epochs):
     train_loader = DataLoader(dataset, config.batch_size)
     best_loss = 100.
+    best_accuracy = 0.
     patience = config.patience
     for epoch in range(1, n_epochs + 1):
         interval_loss = 0
@@ -113,9 +114,14 @@ def train_epoches(dataset, model, n_epochs):
         print("Epoch {} complete \n --> Training Loss = {:.4f} \n --> Validation Loss = {:.4f} \
               \n --> Training Accuracy = {}% \n --> Validation Accuracy = {}% \n".format(epoch, training_loss, valid_loss, training_accuracy, valid_accuracy))
 
-        if valid_loss < best_loss:
+        if config.eval_using == "loss" and valid_loss < best_loss:
             best_loss = valid_loss
-            print("Saving best model till now")
+            print("Saving model with best loss till now")
+            torch.save(model.state_dict(), save)
+            patience = config.patience
+        elif config.eval_using == "accuracy" and valid_accuracy > best_accuracy:
+            best_accuracy = valid_accuracy
+            print("Saving model with best accuracy till now")
             torch.save(model.state_dict(), save)
             patience = config.patience
         else:
