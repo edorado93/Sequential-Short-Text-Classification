@@ -21,7 +21,7 @@ parser.add_argument('--mode', type=int,
 
 args = parser.parse_args()
 config = configurations.get_conf(args.conf)
-save = "eval={}_hidden={}_d1={}_d2={}_lr={}_emsize={}_dropout={}_pretrained={}.pkl".format(config.eval_using, config.hidden_size, config.d1, config.d2, config.lr, config.emsize, config.pooling_dropout, config.pretrained is not None)
+save = "eval={}_hidden={}_d1={}_d2={}_lr={}_emsize={}_dropout={}_weight-decay={}_pretrained={}.pkl".format(config.eval_using, config.hidden_size, config.d1, config.d2, config.lr, config.emsize, config.input_dropout, config.weight_decay, config.pretrained is not None)
 writer = SummaryWriter("runs/"+save)
 # Set the random seed manually for reproducibility.
 torch.manual_seed(1111)
@@ -42,7 +42,7 @@ annotator_valid_dataset = SentenceAnnotatorDataset(validation_data_path, vectori
 embedding = nn.Embedding(len(vectorizer.word2idx), config.emsize)
 if config.pretrained:
     embedding = utils.load_embeddings(embedding, vectorizer.word2idx, config.pretrained, config.emsize)
-model = Annotator(embedding, config.emsize, config.hidden_size, config.pooling_dropout, 4, config, args.cuda)
+model = Annotator(embedding, config.emsize, config.hidden_size, config.input_dropout, 4, config, args.cuda)
 total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in model.parameters())
 print('Model total parameters:', total_params, flush=True)
 
@@ -50,7 +50,7 @@ criterion = nn.NLLLoss()
 if args.cuda:
     model = model.cuda()
     criterion = criterion.cuda()
-optimizer = optim.Adam(model.parameters(), lr=config.lr)
+optimizer = optim.Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
 
 
 def evaluate(dataset, model):

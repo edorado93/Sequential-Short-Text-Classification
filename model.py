@@ -120,12 +120,12 @@ class Pooling(nn.Module):
         return sentence_representations
 
 class Annotator(nn.Module):
-    def __init__(self, embedding, emsize, hidden_size, pooling_dropout, number_of_structural_labels, config, use_cuda=False):
+    def __init__(self, embedding, emsize, hidden_size, input_dropout, number_of_structural_labels, config, use_cuda=False):
         super(Annotator, self).__init__()
         self.use_cuda = use_cuda
         self.hidden_size = hidden_size
         self.emsize = emsize
-        self.pooling_dropout = nn.Dropout(p=pooling_dropout)
+        self.dropouti = nn.Dropout(p=input_dropout)
         self.embedding = embedding
         self.rnn_cell = nn.LSTMCell(emsize, self.hidden_size)
         self.pooling = Pooling("max")
@@ -140,6 +140,9 @@ class Annotator(nn.Module):
         # E = Embedding dimension
         # embedded B * S * W * E --> S * B * W * E
         embedded = embedded.t()
+
+        # Apply dropout after the input layer
+        embedded = self.dropouti(embedded)
 
         # number of sentences
         num_of_sentences = embedded.shape[0]
@@ -183,9 +186,6 @@ class Annotator(nn.Module):
         # j^th sentence of each abstract of the batch, we need to apply max-pooling
         # which is element wise max of each hidden states.
         sentence_representations = self.pooling(hidden_states)
-
-        # Apply dropout after the pooling layer
-        sentence_representations = self.pooling_dropout(sentence_representations)
 
         # Use the second part of the network to make predictions for each sentence of each abstract
         predictions = self.predictor(sentence_representations)
