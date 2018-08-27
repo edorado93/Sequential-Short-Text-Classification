@@ -1,6 +1,6 @@
 class Config:
     eval_using = "accuracy"
-    relative_train_path = '/data/arxiv/train.dat'
+    relative_train_path = '/data/arxiv/big_train.dat'
     relative_dev_path = '/data/arxiv/valid.dat'
     relative_test_path = '/data/arxiv/valid.dat'
     min_freq = 1
@@ -17,6 +17,7 @@ class Config:
     input_dropout = 0
     pretrained = None
     weight_decay = 0
+    bidirectional = True
 
 class D1Config_1(Config):
     d1 = 1
@@ -29,7 +30,6 @@ class D2Config_1(Config):
 
 class D2Config_1WeightDecay(Config):
     d2 = 1
-    weight_decay = 0.2
 
 class D2Config_1Dropout(Config):
     d2 = 1
@@ -50,10 +50,10 @@ class D1D2Dropout(D1D2Config_1):
     input_dropout = 0.2
 
 class D1D2Pretrained(D1D2Config_1):
-    pretrained = 'embeddings/embedding.vec'
+    pretrained = 'embeddings/arxiv/embedding.vec'
 
 class D1D2PretrainedDropout(D1D2Config_1):
-    pretrained = 'embeddings/embedding.vec'
+    pretrained = 'embeddings/arxiv/embedding.vec'
     input_dropout = 0.2
 
 def get_conf(conf):
