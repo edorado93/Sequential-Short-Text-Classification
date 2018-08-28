@@ -1,8 +1,7 @@
 class Config:
     eval_using = "accuracy"
-    relative_train_path = '/data/arxiv/big_train.dat'
+    relative_train_path = '/data/arxiv/train.dat'
     relative_dev_path = '/data/arxiv/valid.dat'
-    relative_test_path = '/data/arxiv/valid.dat'
     min_freq = 1
     emsize = 512
     hidden_size = 1150
