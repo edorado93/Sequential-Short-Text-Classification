@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 import argparse, os
 from utils import Vectorizer, SentenceAnnotatorDataset
-from model import Annotator
+from model import LSTMAnnotator, CNNAnnotator
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from tensorboardX import SummaryWriter
@@ -18,6 +18,8 @@ parser.add_argument('--conf', type=str,
                     help="configuration to load for the training")
 parser.add_argument('--mode', type=int,
                     help='train = 0, eval = 1', default=0)
+parser.add_argument('--arch', type=str,
+                    help="Which architecture to use. lstm or conv")
 
 args = parser.parse_args()
 config = configurations.get_conf(args.conf)
@@ -42,7 +44,11 @@ annotator_valid_dataset = SentenceAnnotatorDataset(validation_data_path, vectori
 embedding = nn.Embedding(len(vectorizer.word2idx), config.emsize)
 if config.pretrained:
     embedding = utils.load_embeddings(embedding, vectorizer.word2idx, config.pretrained, config.emsize)
-model = Annotator(embedding, config.emsize, config.hidden_size, config.input_dropout, 4, config, args.cuda)
+
+if args.arch == "lstm":
+    model = LSTMAnnotator(embedding, config.emsize, config.hidden_size, config.input_dropout, 4, config, args.cuda)
+else:
+    model = CNNAnnotator(embedding, config.emsize, config.hidden_size, config.input_dropout, 4, config, args.cuda)
 total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in model.parameters())
 print('Model total parameters:', total_params, flush=True)
 

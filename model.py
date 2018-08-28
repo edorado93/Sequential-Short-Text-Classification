@@ -1,6 +1,5 @@
 import torch.nn as nn
 import torch
-import utils
 
 class Predictor(nn.Module):
     def __init__(self, emsize, num_of_classes, d1, d2, use_cuda=False):
@@ -103,9 +102,10 @@ class Pooling(nn.Module):
 
     def forward(self, hidden_states):
         # Stack them up to get one single tensor of dimension
-        # N * B * H
+        # S * W * B * H
+        # S = Number of sentences
         # B = Batch size
-        # N = Number of hidden states i.e. the time steps i.e. number of words per abstract
+        # W = Number of hidden states i.e. the time steps i.e. number of words per abstract
         # H = Hidden dimension of the LSTM
         combine_states = torch.stack(hidden_states)
 
@@ -119,9 +119,79 @@ class Pooling(nn.Module):
 
         return sentence_representations
 
-class Annotator(nn.Module):
+class CNNAnnotator(nn.Module):
+    def __init__(self, embedding, emsize, sentence_rep_size, input_dropout, number_of_structural_labels, config, use_cuda=False):
+        super(CNNAnnotator, self).__init__()
+        self.use_cuda = use_cuda
+        self.emsize = emsize
+        self.dropouti = nn.Dropout(p=input_dropout)
+        self.embedding = embedding
+        self.predictor = Predictor(sentence_rep_size, number_of_structural_labels, config.d1, config.d2, use_cuda)
+        self.pooling = Pooling("max")
+        self.conv = nn.Conv2d(in_channels=emsize, out_channels=sentence_rep_size, kernel_size=(1, 3))
+        self.ReLU = nn.ReLU()
+
+    def forward(self, abstracts):
+        # B = Batch size
+        # S = Number of sentences in each abstract
+        # W = Number of words in each sentence
+        # E = Embedding dimension
+        embedded = self.embedding(abstracts)
+
+        # embedded B * S * W * E --> S * B * W * E
+        embedded = embedded.t()
+
+        # number of sentences
+        num_of_sentences = embedded.shape[0]
+
+        sentential_reps = []
+
+        # Process one sentence at a time
+        for j in range(num_of_sentences):
+
+            # Current input to the Convolutional Layer. It would be of dim B * W * E
+            # B * W * E =  [batch_size,max_length,embedding_size]
+            # We transpose it to B * E * W
+            conv_input = embedded[j, :, :, :].transpose(1,2)
+
+            # Change the shape to [batch_size, embedding_size, 1, max_length]
+            # e.g. torch.Size([8, 512, 102, 1])
+            conv_input = conv_input.unsqueeze(2)
+
+            # Run the convolution as if this were an image
+            # Convolutional layer expects image to be arranged as B * E * H * W
+            convolved = self.conv(conv_input)
+
+            # Remove the extra dimension, e.g. make the shape [batch_size, embedding_size, max_length]
+            # We have max_length because that's the number of channels essentially we have
+            # So, for every channel we have a kernel running and we have `output_size` different
+            # kernels in all. B * E * W
+            result = convolved.squeeze(2)
+
+            # ReLU activation, W * B * E
+            result = self.ReLU(result).t().transpose(0,2)
+
+            # Record sentence representations for each sentence
+            sentential_reps.append(result)
+
+        # Apply pooling
+        sentence_representations = self.pooling(sentential_reps)
+
+        # Use the second part of the network to make predictions for each sentence of each abstract
+        predictions = self.predictor(sentence_representations)
+
+        # The predictions we get are of the dimension S * B * C
+        # S = number of sentences
+        # B = Batch size
+        # C are the number of output classes
+        # We need B * C * S
+        predictions = predictions.t().transpose(1, 2)
+        return predictions
+
+
+class LSTMAnnotator(nn.Module):
     def __init__(self, embedding, emsize, hidden_size, input_dropout, number_of_structural_labels, config, use_cuda=False):
-        super(Annotator, self).__init__()
+        super(LSTMAnnotator, self).__init__()
         self.use_cuda = use_cuda
         self.hidden_size = hidden_size
         self.emsize = emsize
