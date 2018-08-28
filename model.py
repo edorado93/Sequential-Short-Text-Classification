@@ -165,6 +165,7 @@ class CNNAnnotator(nn.Module):
             # Remove the extra dimension, e.g. make the shape [batch_size, embedding_size, max_length]
             # We have max_length because that's the number of channels essentially we have
             # So, for every channel we have a kernel running and we have `output_size` different
+            # W now is (W - kernel_size + 1)
             # kernels in all. B * E * W
             result = convolved.squeeze(2)
 
