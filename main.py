@@ -38,8 +38,8 @@ training_data_path = cwd + config.relative_train_path
 validation_data_path = cwd + config.relative_dev_path
 
 vectorizer = Vectorizer(min_frequency=config.min_freq)
-annotator_train_dataset = SentenceAnnotatorDataset(training_data_path, vectorizer, args.cuda, max_len=100)
-annotator_valid_dataset = SentenceAnnotatorDataset(validation_data_path, vectorizer, args.cuda, max_len=100)
+annotator_train_dataset = SentenceAnnotatorDataset(training_data_path, vectorizer, args.cuda, max_len=1000)
+annotator_valid_dataset = SentenceAnnotatorDataset(validation_data_path, vectorizer, args.cuda, max_len=1000)
 
 embedding = nn.Embedding(len(vectorizer.word2idx), config.emsize)
 if config.pretrained:
