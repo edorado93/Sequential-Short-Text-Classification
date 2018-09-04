@@ -191,88 +191,65 @@ class CNNAnnotator(nn.Module):
 
 
 class LSTMAnnotator(nn.Module):
-    def __init__(self, embedding, emsize, hidden_size, input_dropout, number_of_structural_labels, config, use_cuda=False):
+    def __init__(self, embedding, number_of_structural_labels, config, use_cuda=False):
         super(LSTMAnnotator, self).__init__()
+
+        hidden_size = config.emsize
+
+        if config.bidirectional:
+            hidden_size *= 2
+
         self.use_cuda = use_cuda
         self.hidden_size = hidden_size
-        self.emsize = emsize
-        self.dropouti = nn.Dropout(p=input_dropout)
+        self.emsize = config.emsize
+        self.dropout_p = nn.Dropout(p=config.dropout_p)
         self.embedding = embedding
-        self.rnn_cell = nn.LSTMCell(emsize, self.hidden_size)
+        self.lstm = nn.GRU(config.emsize, hidden_size, config.n_layers,
+                             batch_first=True, bidirectional=config.bidirectional, dropout=config.dropout_p)
         self.pooling = Pooling("max")
-        self.predictor = Predictor(self.hidden_size + self.hidden_size * config.bidirectional, number_of_structural_labels, config.d1, config.d2, use_cuda)
+        self.predictor = Predictor(self.hidden_size, number_of_structural_labels, config.d1, config.d2, use_cuda)
         self.bidirectional = config.bidirectional
-        self.reverse_rnn_cell = nn.LSTMCell(emsize, self.hidden_size) if config.bidirectional else None
 
     def forward(self, abstracts):
-        if self.bidirectional:
-            rev_abstracts = torch.from_numpy(np.flip(abstracts.cpu().numpy(), 2).copy())
-            if self.use_cuda:
-                rev_abstracts = rev_abstracts.cuda()
-            embeddings_to_consider = [self.embedding(abstracts), self.embedding(rev_abstracts)]
-        else:
-            embeddings_to_consider = [self.embedding(abstracts)]
 
-        reps = []
-        for e, embedded in enumerate(embeddings_to_consider):
-            # B = Batch size
-            # S = Number of sentences in each abstract
-            # W = Number of words in each sentence
-            # E = Embedding dimension
-            # embedded B * S * W * E --> S * B * W * E
-            embedded = embedded.t()
+        # Convert word tokens to word embeddings.
+        embedded = self.embedding(abstracts)
 
-            # Apply dropout after the input layer
-            embedded = self.dropouti(embedded)
+        # B = Batch size
+        # S = Number of sentences in each abstract
+        # W = Number of words in each sentence
+        # E = Embedding dimension
+        # embedded B * S * W * E --> S * B * W * E
+        embedded = embedded.t()
 
-            # number of sentences
-            num_of_sentences = embedded.shape[0]
+        # Apply dropout after the input layer
+        embedded = self.dropout_p(embedded)
 
-            # number of words in each sentence
-            num_of_words = embedded.shape[2]
+        # number of sentences
+        num_of_sentences = embedded.shape[0]
 
-            # Number of abstracts being processed at once
-            batch_size = embedded.shape[1]
+        # batch size
+        batch_size = embedded.shape[1]
 
-            # Initial hidden and cell states of the LSTMCell
-            h, c = torch.zeros(batch_size, self.hidden_size), torch.zeros(batch_size, self.hidden_size)
-            if self.use_cuda:
-                h = h.cuda()
-                c = c.cuda()
+        # List to keep track of the hidden states
+        hidden_states = []
 
-            # List to keep track of the hidden states
-            hidden_states = []
+        # Process one sentence at a time
+        for j in range(num_of_sentences):
+            sent_hidden, _ = self.lstm(embedded[j])
 
-            # Process one sentence at a time
-            for j in range(num_of_sentences):
+            # Get the forward LSTM's / GRU's outputs only
+            num_directions = 2 if self.bidirectional else 1
+            sent_hidden = sent_hidden.view(batch_size, -1, num_directions, self.hidden_size)[:, :, 0, :]
+            hidden_states.append(sent_hidden.transpose(0, 1))
 
-                # List to keep track of the hidden states
-                sent_hidden_states = []
-
-                # Feed one word at a time to the LSTMCell to get the individual hidden states
-                for i in range(num_of_words):
-
-                    # Current input to the LSTMCell. It would be of dim B * E
-                    lstm_input = embedded[j, :, i, :]
-
-                    cell = self.rnn_cell if e == 0 else self.reverse_rnn_cell
-
-                    # One call to the LSTM. Gives us the hidden state after this time step
-                    h, c = cell(lstm_input, (h, c))
-
-                    # The hidden states at every time-step
-                    sent_hidden_states.append(h)
-
-                hidden_states.append(torch.stack(sent_hidden_states))
-
-            # Once we are done processing the individual words, one at a time for the
-            # j^th sentence of each abstract of the batch, we need to apply max-pooling
-            # which is element wise max of each hidden states.
-            sentence_representations = self.pooling(hidden_states)
-            reps.append(sentence_representations)
+        # Once we are done processing the individual words, one at a time for the
+        # j^th sentence of each abstract of the batch, we need to apply max-pooling
+        # which is element wise max of each hidden states.
+        sentence_representations = self.pooling(hidden_states)
 
         # Use the second part of the network to make predictions for each sentence of each abstract
-        predictions = self.predictor(torch.cat(reps, dim=2))
+        predictions = self.predictor(sentence_representations)
 
         # The predictions we get are of the dimension N * B * C
         # N = number of sentences

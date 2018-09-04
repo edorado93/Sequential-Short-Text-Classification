@@ -13,7 +13,8 @@ class Config:
     d2 = 0
     epochs = 40
     patience = 12
-    input_dropout = 0
+    dropout_p = 0
+    n_layers = 2
     pretrained = None
     weight_decay = 0
     bidirectional = True
