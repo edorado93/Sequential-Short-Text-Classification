@@ -23,7 +23,7 @@ parser.add_argument('--arch', type=str,
 
 args = parser.parse_args()
 config = configurations.get_conf(args.conf)
-save = "eval={}_hidden={}_d1={}_d2={}_lr={}_emsize={}_dropout={}_weight-decay={}_pretrained={}.pkl".format(config.eval_using, config.hidden_size, config.d1, config.d2, config.lr, config.emsize, config.input_dropout, config.weight_decay, config.pretrained is not None)
+save = "eval={}-hidden={}-d1={}-d2={}-lr={}-emsize={}-dropout_p={}-weight-decay={}-pretrained={}.pkl".format(config.eval_using, config.hidden_size, config.d1, config.d2, config.lr, config.emsize, config.dropout_p, config.weight_decay, config.pretrained is not None)
 writer = SummaryWriter("runs/"+save)
 # Set the random seed manually for reproducibility.
 torch.manual_seed(1111)
@@ -46,9 +46,9 @@ if config.pretrained:
     embedding = utils.load_embeddings(embedding, vectorizer.word2idx, config.pretrained, config.emsize)
 
 if args.arch == "lstm":
-    model = LSTMAnnotator(embedding, config.emsize, config.hidden_size, config.input_dropout, 4, config, args.cuda)
+    model = LSTMAnnotator(embedding, 4, config, args.cuda)
 else:
-    model = CNNAnnotator(embedding, config.emsize, config.hidden_size, config.input_dropout, 4, config, args.cuda)
+    model = CNNAnnotator(embedding, config.emsize, config.hidden_size, config.dropout_p, 4, config, args.cuda)
 total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in model.parameters())
 print('Model total parameters:', total_params, flush=True)
 
