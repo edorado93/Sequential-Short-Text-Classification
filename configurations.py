@@ -17,6 +17,7 @@ class Config:
     pretrained = None
     weight_decay = 0
     bidirectional = True
+    use_attention = True
 
 class D1Config_1(Config):
     d1 = 1
