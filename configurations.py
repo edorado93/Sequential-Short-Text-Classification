@@ -17,7 +17,11 @@ class Config:
     pretrained = None
     weight_decay = 0
     bidirectional = True
+
+    # Attention based scoring configurations
     use_attention = True
+    attention_score_type = "sigmoid"
+    attention_type = "weighted"
 
 class D1Config_1(Config):
     d1 = 1

@@ -121,15 +121,27 @@ class Pooling(nn.Module):
         return sentence_representations
 
 class AttentionScoring(nn.Module):
-    def __init__(self, word_dim):
+    def __init__(self, word_dim, scoring, attention_type):
         super(AttentionScoring, self).__init__()
-        self.fc = nn.Linear(word_dim, 1)
+        if not attention_type == "weighted":
+            word_dim -= 1
+        self.fc1 = nn.Linear(word_dim, 1)
         self.sigmoid = nn.Sigmoid()
+        self.softmax = nn.Softmax()
+        self.attention_type = attention_type
+        self.scoring = scoring
 
     def forward(self, embedded):
         linear = self.fc(embedded)
-        scores = self.sigmoid(linear)
-        final = torch.cat([embedded, scores], dim=3)
+        if self.scoring == "sigmoid":
+            scores = self.sigmoid(linear)
+        else:
+            scores = self.softmax(linear)
+
+        if self.attention_type == "weighted":
+            final = embedded * scores
+        else:
+            final = torch.cat([embedded, scores], dim=3)
         return final
 
 class CNNAnnotator(nn.Module):
@@ -144,7 +156,8 @@ class CNNAnnotator(nn.Module):
         self.conv = nn.Conv2d(in_channels=emsize, out_channels=sentence_rep_size, kernel_size=(1, 3))
         self.ReLU = nn.ReLU()
         self.use_attention = config.use_attention
-        self.attention = AttentionScoring(emsize - 1) if config.use_attention else None
+        self.attention = AttentionScoring(emsize, config.attention_score_type,
+                                          config.attention_type) if config.use_attention else None
 
     def forward(self, abstracts):
         # B = Batch size
@@ -222,7 +235,8 @@ class LSTMAnnotator(nn.Module):
         self.bidirectional = config.bidirectional
         self.use_attention = config.use_attention
         self.reverse_rnn_cell = nn.LSTMCell(emsize, self.hidden_size) if config.bidirectional else None
-        self.attention = AttentionScoring(emsize - 1) if config.use_attention else None
+        self.attention = AttentionScoring(emsize, config.attention_score_type,
+                                          config.attention_type) if config.use_attention else None
 
     def forward(self, abstracts):
         if self.bidirectional:

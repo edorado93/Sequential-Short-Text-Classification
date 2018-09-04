@@ -42,9 +42,10 @@ annotator_train_dataset = SentenceAnnotatorDataset(training_data_path, vectorize
 annotator_valid_dataset = SentenceAnnotatorDataset(validation_data_path, vectorizer, args.cuda, max_len=1000)
 
 # We don't want to change the size of word embeddings. The additional dimension comes from
-# the attention scores.
+# the attention scores. Weighted attention is where we will do an element wise dot product of
+# the attention scores with the word embeddings before feeding to the LSTM.
 embedding = nn.Embedding(len(vectorizer.word2idx), config.emsize)
-if config.use_attention:
+if config.use_attention and not config.attention_type == "weighted":
     config.emsize += 1
 
 if config.pretrained:
