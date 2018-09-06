@@ -58,11 +58,12 @@ else:
 total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in model.parameters())
 print('Model total parameters:', total_params, flush=True)
 print("Configuration: Learning Rate = {}, Embedding dimension = {} Hidden Units = {},\
-      \n FF1 = {}, FF2 = {}, Dropout Probability = {} \
-      \n Pretrained embeddings = {}, Architecture = {}".format(config.lr, config.emsize, config.hidden_size,
+      \n FF1 = {}, FF2 = {}, Weight Decay rate = {} \
+      \n Pretrained embeddings = {}, Architecture = {} \
+      \n Attention Scoring Type = {}, Attention Scoring Technique = {}, model save file = {}".format(config.lr, config.emsize, config.hidden_size,
                                                                config.d1, config.d2,
-                                                               config.input_dropout, config.pretrained,
-                                                               args.arch))
+                                                               config.weight_decay, config.pretrained,
+                                                               args.arch, config.attention_score_type, config.attention_type, save))
 
 criterion = nn.NLLLoss()
 if args.cuda:

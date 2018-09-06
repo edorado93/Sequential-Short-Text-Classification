@@ -125,7 +125,7 @@ class AttentionScoring(nn.Module):
         super(AttentionScoring, self).__init__()
         if not attention_type == "weighted":
             word_dim -= 1
-        self.fc1 = nn.Linear(word_dim, 1)
+        self.fc = nn.Linear(word_dim, 1)
         self.sigmoid = nn.Sigmoid()
         self.softmax = nn.Softmax()
         self.attention_type = attention_type
