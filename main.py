@@ -23,7 +23,7 @@ parser.add_argument('--arch', type=str,
 
 args = parser.parse_args()
 config = configurations.get_conf(args.conf)
-save = "eval={}_hidden={}_d1={}_d2={}_lr={}_emsize={}_dropout={}_weight-decay={}_pretrained={}.pkl".format(config.eval_using, config.hidden_size, config.d1, config.d2, config.lr, config.emsize, config.input_dropout, config.weight_decay, config.pretrained is not None)
+save = "eval={}_hidden={}_d1={}_d2={}_lr={}_emsize={}_dropout={}_weight-decay={}_pretrained={}_arch={}.pkl".format(config.eval_using, config.hidden_size, config.d1, config.d2, config.lr, config.emsize, config.input_dropout, config.weight_decay, config.pretrained is not None, args.arch)
 writer = SummaryWriter("runs/"+save)
 # Set the random seed manually for reproducibility.
 torch.manual_seed(1111)
@@ -41,7 +41,13 @@ vectorizer = Vectorizer(min_frequency=config.min_freq)
 annotator_train_dataset = SentenceAnnotatorDataset(training_data_path, vectorizer, args.cuda, max_len=1000)
 annotator_valid_dataset = SentenceAnnotatorDataset(validation_data_path, vectorizer, args.cuda, max_len=1000)
 
+# We don't want to change the size of word embeddings. The additional dimension comes from
+# the attention scores. Weighted attention is where we will do an element wise dot product of
+# the attention scores with the word embeddings before feeding to the LSTM.
 embedding = nn.Embedding(len(vectorizer.word2idx), config.emsize)
+if config.use_attention and not config.attention_type == "weighted":
+    config.emsize += 1
+
 if config.pretrained:
     embedding = utils.load_embeddings(embedding, vectorizer.word2idx, config.pretrained, config.emsize)
 
@@ -51,6 +57,13 @@ else:
     model = CNNAnnotator(embedding, config.emsize, config.hidden_size, config.input_dropout, 4, config, args.cuda)
 total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in model.parameters())
 print('Model total parameters:', total_params, flush=True)
+print("Configuration: Learning Rate = {}, Embedding dimension = {} Hidden Units = {},\
+      \n FF1 = {}, FF2 = {}, Weight Decay rate = {} \
+      \n Pretrained embeddings = {}, Architecture = {} \
+      \n Attention Scoring Type = {}, Attention Scoring Technique = {}, model save file = {}".format(config.lr, config.emsize, config.hidden_size,
+                                                               config.d1, config.d2,
+                                                               config.weight_decay, config.pretrained,
+                                                               args.arch, config.attention_score_type, config.attention_type, save))
 
 criterion = nn.NLLLoss()
 if args.cuda:

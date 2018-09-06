@@ -120,6 +120,30 @@ class Pooling(nn.Module):
 
         return sentence_representations
 
+class AttentionScoring(nn.Module):
+    def __init__(self, word_dim, scoring, attention_type):
+        super(AttentionScoring, self).__init__()
+        if not attention_type == "weighted":
+            word_dim -= 1
+        self.fc = nn.Linear(word_dim, 1)
+        self.sigmoid = nn.Sigmoid()
+        self.softmax = nn.Softmax()
+        self.attention_type = attention_type
+        self.scoring = scoring
+
+    def forward(self, embedded):
+        linear = self.fc(embedded)
+        if self.scoring == "sigmoid":
+            scores = self.sigmoid(linear)
+        else:
+            scores = self.softmax(linear)
+
+        if self.attention_type == "weighted":
+            final = embedded * scores
+        else:
+            final = torch.cat([embedded, scores], dim=3)
+        return final
+
 class CNNAnnotator(nn.Module):
     def __init__(self, embedding, emsize, sentence_rep_size, input_dropout, number_of_structural_labels, config, use_cuda=False):
         super(CNNAnnotator, self).__init__()
@@ -131,6 +155,9 @@ class CNNAnnotator(nn.Module):
         self.pooling = Pooling("max")
         self.conv = nn.Conv2d(in_channels=emsize, out_channels=sentence_rep_size, kernel_size=(1, 3))
         self.ReLU = nn.ReLU()
+        self.use_attention = config.use_attention
+        self.attention = AttentionScoring(emsize, config.attention_score_type,
+                                          config.attention_type) if config.use_attention else None
 
     def forward(self, abstracts):
         # B = Batch size
@@ -138,6 +165,11 @@ class CNNAnnotator(nn.Module):
         # W = Number of words in each sentence
         # E = Embedding dimension
         embedded = self.embedding(abstracts)
+
+        # Apply attention scoring on the abstracts. This causes the word embedding
+        # dimension to go up by one.
+        if self.use_attention:
+            embedded = self.attention(embedded)
 
         # embedded B * S * W * E --> S * B * W * E
         embedded = embedded.t()
@@ -189,7 +221,6 @@ class CNNAnnotator(nn.Module):
         predictions = predictions.t().transpose(1, 2)
         return predictions
 
-
 class LSTMAnnotator(nn.Module):
     def __init__(self, embedding, emsize, hidden_size, input_dropout, number_of_structural_labels, config, use_cuda=False):
         super(LSTMAnnotator, self).__init__()
@@ -202,7 +233,10 @@ class LSTMAnnotator(nn.Module):
         self.pooling = Pooling("max")
         self.predictor = Predictor(self.hidden_size + self.hidden_size * config.bidirectional, number_of_structural_labels, config.d1, config.d2, use_cuda)
         self.bidirectional = config.bidirectional
+        self.use_attention = config.use_attention
         self.reverse_rnn_cell = nn.LSTMCell(emsize, self.hidden_size) if config.bidirectional else None
+        self.attention = AttentionScoring(emsize, config.attention_score_type,
+                                          config.attention_type) if config.use_attention else None
 
     def forward(self, abstracts):
         if self.bidirectional:
@@ -212,6 +246,11 @@ class LSTMAnnotator(nn.Module):
             embeddings_to_consider = [self.embedding(abstracts), self.embedding(rev_abstracts)]
         else:
             embeddings_to_consider = [self.embedding(abstracts)]
+
+        # Apply attention scoring on the abstracts. This causes the word embedding
+        # dimension to go up by one.
+        if self.use_attention:
+            embeddings_to_consider = [self.attention(e) for e in embeddings_to_consider]
 
         reps = []
         for e, embedded in enumerate(embeddings_to_consider):
