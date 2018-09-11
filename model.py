@@ -188,7 +188,7 @@ class CNNAnnotator(nn.Module):
             conv_input = embedded[j, :, :, :].transpose(1,2)
 
             # Change the shape to [batch_size, embedding_size, 1, max_length]
-            # e.g. torch.Size([8, 512, 102, 1])
+            # e.g. torch.Size([8, 512, 1, 102])
             conv_input = conv_input.unsqueeze(2)
 
             # Run the convolution as if this were an image
@@ -198,10 +198,10 @@ class CNNAnnotator(nn.Module):
             # Remove the extra dimension, e.g. make the shape [batch_size, embedding_size, max_length]
             # We have max_length because that's the number of channels essentially we have
             # So, for every channel we have a kernel running and we have `output_size` different
-            # kernels in all. B * E * W
+            # kernels in all. B * E * [W - kernel_size + 1]
             result = convolved.squeeze(2)
 
-            # ReLU activation, W * B * E
+            # ReLU activation, [W - kernel_size + 1] * B * E
             result = self.ReLU(result).t().transpose(0,2)
 
             # Record sentence representations for each sentence

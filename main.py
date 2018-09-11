@@ -9,7 +9,8 @@ from tensorboardX import SummaryWriter
 import json
 import configurations
 import utils
-
+import random
+from torch.backends import cudnn
 
 parser = argparse.ArgumentParser(description='seq2seq model')
 parser.add_argument('--cuda', action='store_true',
@@ -23,10 +24,16 @@ parser.add_argument('--arch', type=str,
 
 args = parser.parse_args()
 config = configurations.get_conf(args.conf)
-save = "eval={}_hidden={}_d1={}_d2={}_lr={}_emsize={}_dropout={}_weight-decay={}_pretrained={}_arch={}.pkl".format(config.eval_using, config.hidden_size, config.d1, config.d2, config.lr, config.emsize, config.input_dropout, config.weight_decay, config.pretrained is not None, args.arch)
+save = "hidden={}--d1={}--d2={}--lr={}--emsize={}--L2={}--arch={}--attention={}--attention_type={}--attention-weighting={}.pkl".format(
+    config.hidden_size, config.d1, config.d2, config.lr,
+    config.emsize, config.weight_decay, args.arch,
+    config.use_attention, config.attention_type,
+    config.attention_score_type)
 writer = SummaryWriter("runs/"+save)
 # Set the random seed manually for reproducibility.
 torch.manual_seed(1111)
+random.seed(1111)
+cudnn.benchmark = True
 if torch.cuda.is_available():
     if not args.cuda:
         print("WARNING: You have a CUDA device, so you should probably run with --cuda")
