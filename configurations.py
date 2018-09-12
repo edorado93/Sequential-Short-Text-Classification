@@ -1,5 +1,5 @@
 class Config:
-    eval_using = "loss"
+    eval_using = "accuracy"
     relative_train_path = '/data/85%/arxiv/train.dat'
     relative_dev_path = '/data/85%/arxiv/valid.dat'
     min_freq = 1

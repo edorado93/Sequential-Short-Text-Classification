@@ -106,11 +106,16 @@ class Vectorizer:
         return string.strip().lower()
 
 class SentenceAnnotatorDataset(Dataset):
-    def __init__(self, path, vectorizer, use_cuda, max_len=200, max_sent=10):
+    def __init__(self, path, vectorizer, use_cuda, max_len=200, max_sent=10, is_test=False):
         self.max_number_of_sentences = -1
         self.vectorizer = vectorizer
         self.max_len = max_len
         self.max_sent = max_sent
+        self.max_label_sent = -1
+        if is_test:
+            self.w2i = {}
+            self.i2w = {}
+        self.is_test = is_test
         self.abstracts, self.labels = self.process(path)
         self.cuda = use_cuda
         self.abstracts, self.labels = self._vectorize_corpus()
@@ -122,11 +127,17 @@ class SentenceAnnotatorDataset(Dataset):
             for line in f:
                 line = line.strip()
                 j = json.loads(line)
-                sentences = j["sents"]
-                labels = j["labels"]
-                S, L = [self._tokenize_word(s) for s in sentences], [[l] for l in labels]
-                if len(S) > self.max_sent or max([len(s) for s in S]) > self.max_len:
-                    continue
+
+                if self.is_test:
+                    abstract = j["abstract"].split(" . ")
+                    title = j["title"]
+                    S, L = [self._tokenize_word(s) for s in abstract], self._tokenize_word(title)
+                else:
+                    sentences = j["sents"]
+                    labels = j["labels"]
+                    S, L = [self._tokenize_word(s) for s in sentences], [[l] for l in labels]
+                    if len(S) > self.max_sent or max([len(s) for s in S]) > self.max_len:
+                        continue
                 self.max_number_of_sentences = max(self.max_number_of_sentences, len(S))
                 abstracts.append(S)
                 sent_labels.append(L)
@@ -161,12 +172,27 @@ class SentenceAnnotatorDataset(Dataset):
         self.abstracts, self.labels = [], []
         for abstract, structure_labels in old:
             self.abstracts.append((self._pad_abstract(abstract, max_sentence_length), [len(abstract)]))
-            self.labels.append(self._pad_abstract(structure_labels, 1))
+            if not self.is_test:
+                self.labels.append(self._pad_abstract(structure_labels, 1))
+            else:
+                self.labels.append(self._pad_sentence_vector(structure_labels, self.max_label_sent))
 
     def _vectorize_corpus(self):
         if not self.vectorizer.vocabulary:
             self.vectorizer.fit(self.abstracts)
-        return self.vectorizer.transform(self.abstracts, start_end_tokens=True), self.vectorizer.transform(self.labels, start_end_tokens=False)
+        if not self.is_test:
+            abstracts, labels = self.vectorizer.transform(self.abstracts, start_end_tokens=True), self.vectorizer.transform(self.labels, start_end_tokens=False)
+        else:
+            abstracts = self.vectorizer.transform(self.abstracts, start_end_tokens=True)
+            self.w2i['<PAD>'] = 3
+            for t in self.labels:
+                self.max_label_sent = max(self.max_label_sent, len(t))
+                for w in t:
+                    if w not in self.w2i:
+                        self.w2i[w] = len(self.w2i)
+                        self.i2w[self.w2i[w]] = w
+            labels = [[self.w2i[w] for w in l] for l in self.labels]
+        return abstracts, labels
 
     def _tokenize_word(self, sentence):
         sentence = self.vectorizer.clean_str(sentence)

@@ -160,9 +160,10 @@ if __name__ == "__main__":
     if args.mode == 0:
         train_epoches(annotator_train_dataset, model, config.epochs)
     if args.mode == 1:
+        save = "best_model.pkl"
         model.load_state_dict(torch.load(save))
         test_data_path = cwd + config.relative_test_path
-        test_dataset = SentenceAnnotatorDataset(training_data_path, vectorizer, args.cuda, max_len=1000)
+        test_dataset = SentenceAnnotatorDataset(test_data_path, vectorizer, args.cuda, max_len=1000, is_test=True)
         test_loader = DataLoader(test_dataset, config.batch_size)
 
         predictions = []
@@ -171,7 +172,7 @@ if __name__ == "__main__":
                 output = model(abstracts)
                 pred = output.topk(1, dim=1)[1].squeeze(1)
 
-                for a, p in zip(abstracts, pred):
+                for title, a, p in zip(sentence_labels, abstracts, pred):
                     sents, labels = [], []
                     for s1, s2 in zip(a, p):
                         # Don't consider padded sentences in the end. The extra ones
@@ -179,6 +180,6 @@ if __name__ == "__main__":
                             sents.append(" ".join([vectorizer.idx2word[w.item()] for w in s1 if w.item() not in [3,5,6]]))
                             labels.append(vectorizer.idx2word[s2.item()])
 
-                    j = {"sents": sents, "labels": labels}
+                    j = {"sents": sents, "labels": labels, "title": " ".join([test_dataset.i2w[i.item()] for i in title if i != 3])}
                     f.write(json.dumps(j)+"\n")
 
