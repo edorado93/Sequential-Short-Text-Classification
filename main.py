@@ -170,6 +170,7 @@ if __name__ == "__main__":
         with open("predictions.txt", "w") as f:
             for i, (abstracts, sentence_labels, num_of_sentences) in enumerate(test_loader):
                 output = model(abstracts)
+                output[:, 3, :] = float("-inf")
                 pred = output.topk(1, dim=1)[1].squeeze(1)
 
                 for title, a, p in zip(sentence_labels, abstracts, pred):
@@ -180,6 +181,6 @@ if __name__ == "__main__":
                             sents.append(" ".join([vectorizer.idx2word[w.item()] for w in s1 if w.item() not in [3,5,6]]))
                             labels.append(vectorizer.idx2word[s2.item()])
 
-                    j = {"sents": sents, "labels": labels, "title": " ".join([test_dataset.i2w[i.item()] for i in title if i != 3])}
+                    j = {"sents": sents, "labels": labels, "title": " ".join([test_dataset.i2w[i.item()] for i in title if i != 0])}
                     f.write(json.dumps(j)+"\n")
 

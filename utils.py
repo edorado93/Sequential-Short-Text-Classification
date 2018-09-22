@@ -143,20 +143,20 @@ class SentenceAnnotatorDataset(Dataset):
                 sent_labels.append(L)
             return abstracts, sent_labels
 
-    def _pad_sentence_vector(self, vector, maxlen, pad_value=3):
+    def _pad_sentence_vector(self, vector, maxlen, pad_value):
         org_length = len(vector)
         padding = maxlen - org_length
         vector.extend([pad_value] * padding)
         return vector
 
-    def _pad_abstract(self, abstract, sent_length):
+    def _pad_abstract(self, abstract, sent_length, pad_value=3):
         padded_abstract = []
         for sent in abstract:
-            padded_abstract.append(self._pad_sentence_vector(sent, sent_length))
+            padded_abstract.append(self._pad_sentence_vector(sent, sent_length, pad_value))
 
         if len(abstract) < self.max_number_of_sentences:
             for _ in range(self.max_number_of_sentences - len(abstract)):
-                padded_abstract.append(self._pad_sentence_vector([], sent_length))
+                padded_abstract.append(self._pad_sentence_vector([], sent_length, pad_value))
 
         return padded_abstract
 
@@ -175,7 +175,7 @@ class SentenceAnnotatorDataset(Dataset):
             if not self.is_test:
                 self.labels.append(self._pad_abstract(structure_labels, 1))
             else:
-                self.labels.append(self._pad_sentence_vector(structure_labels, self.max_label_sent))
+                self.labels.append(self._pad_sentence_vector(structure_labels, self.max_label_sent,pad_value=0))
 
     def _vectorize_corpus(self):
         if not self.vectorizer.vocabulary:
@@ -184,7 +184,7 @@ class SentenceAnnotatorDataset(Dataset):
             abstracts, labels = self.vectorizer.transform(self.abstracts, start_end_tokens=True), self.vectorizer.transform(self.labels, start_end_tokens=False)
         else:
             abstracts = self.vectorizer.transform(self.abstracts, start_end_tokens=True)
-            self.w2i['<PAD>'] = 3
+            self.w2i['<PAD>'] = 0
             for t in self.labels:
                 self.max_label_sent = max(self.max_label_sent, len(t))
                 for w in t:
@@ -195,7 +195,8 @@ class SentenceAnnotatorDataset(Dataset):
         return abstracts, labels
 
     def _tokenize_word(self, sentence):
-        sentence = self.vectorizer.clean_str(sentence)
+        if not self.is_test:
+            sentence = self.vectorizer.clean_str(sentence)
         result = []
         for word in sentence.split():
             if word:
